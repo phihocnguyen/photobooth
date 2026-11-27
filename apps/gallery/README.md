@@ -27,7 +27,7 @@ $GALLERY_MEDIA_DIR/<session-token>/
    npm.cmd run test:photos
    ```
 
-4. Chọn mẫu và nạp ảnh từ máy hoặc chạy app bình thường bằng `npm start` để chụp. Xác nhận thành phẩm rồi mở URL session từ QR. Muốn quét bằng điện thoại cùng Wi-Fi, chạy Next với `--hostname 0.0.0.0` và dùng địa chỉ LAN của máy cho `GALLERY_PUBLIC_URL`.
+4. Trong chế độ thử, chọn mẫu và bấm **Chọn ảnh thử**. Để chụp bằng camera, chạy app bằng `npm start`. Xác nhận thành phẩm rồi mở URL session từ QR. Muốn quét bằng điện thoại cùng Wi-Fi, chạy Next với `--hostname 0.0.0.0` và dùng địa chỉ LAN của máy cho `GALLERY_PUBLIC_URL`.
 
 Chế độ dev dùng PostgreSQL cục bộ nhúng khi bật `GALLERY_LOCAL_DB=1`. File thử nằm trong `apps/gallery/.gallery-data` nếu chưa đổi `GALLERY_MEDIA_DIR`.
 

@@ -736,7 +736,7 @@ function showScreen(screen) {
   setupControls.hidden = screen !== 'setup';
   templatePanel.hidden = !['template-start', 'template'].includes(screen);
   editSelectionButton.hidden = screen !== 'template';
-  importButton.hidden = screen !== 'template-start';
+  importButton.hidden = !photoTestMode || screen !== 'template-start';
   finalConfirmButton.textContent = screen === 'template-start'
     ? 'Vào live preview →'
     : 'Xác nhận →';

@@ -222,6 +222,8 @@ body[data-screen="template-start"] .newspaper-grid { margin-top: 16px; }
 .session-qr[hidden] { display: none; }
 .qr-card .button-primary { width: 100%; margin-top: 23px; }
 #qr-timer { display: block; margin-top: 12px; color: #8f88a2; font-size: 11px; }
+.design-clean-white { --paper: #fff; --ink: #444; --accent: #fff; --slot: #e6e6e6; }
+.design-clean-black { --paper: #000; --ink: #ddd; --accent: #000; --slot: #262626; }
 .design-ivory-index { --paper: #faf5e8; --ink: #322c24; --accent: #a58555; --slot: #c8b9a4; }
 .design-film-noir { --paper: #141719; --ink: #f5f1e4; --accent: #d5ae6c; --slot: #565b60; --sample-filter: grayscale(1) contrast(1.12); }
 .design-rose-note { --paper: #f1d6d9; --ink: #713b4d; --accent: #b87688; --slot: #c68d9c; --frame-font-style: italic; --frame-radius: 2%; }
@@ -237,6 +239,8 @@ body[data-screen="template-start"] .newspaper-grid { margin-top: 16px; }
 .frame-template .frame-sample-photo { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: cover; object-position: center 40%; border-radius: var(--frame-radius, 0); filter: var(--sample-filter, none); }
 .frame-template .print-slot .frame-sample-photo { display: none; position: absolute; inset: 0; }
 body[data-screen="template-start"] .frame-template .print-slot .frame-sample-photo { display: block; }
+:is(.design-clean-white, .design-clean-black) :is(.print-heading, .print-footer, .template-sample-title, .template-sample-footer) { display: none; }
+:is(.design-clean-white, .design-clean-black) .print-slot { color: var(--ink); }
 .design-ivory-index .print-footer, .design-ivory-index .template-sample-footer { border-top: 1px solid var(--accent); }
 .design-film-noir .print-heading, .design-film-noir .template-sample-title { color: var(--accent); font-family: Consolas, monospace; letter-spacing: .2em; }
 .design-film-noir.frame-template.print-mockup { background-image: repeating-linear-gradient(var(--accent) 0 4px, transparent 4px 11px), repeating-linear-gradient(var(--accent) 0 4px, transparent 4px 11px); background-position: left 2px top, right 2px top; background-size: 2px 100%; background-repeat: no-repeat; }

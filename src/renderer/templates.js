@@ -107,6 +107,8 @@ window.PHOTO_TEMPLATES = [
         'Ghi thêm vào sổ. Tấm ảnh ở Củ Chi đẹp nhất là lúc cả nhóm đang cười.'
       ]
     } },
+  { id: 'clean-white', name: 'Trắng trơn', category: 'minimal', title: '', icon: '', footer: '' },
+  { id: 'clean-black', name: 'Đen trơn', category: 'minimal', title: '', icon: '', footer: '' },
   { id: 'ivory-index', name: 'Bìa lưu niệm', category: 'minimal', title: 'PHOTO INDEX', icon: '✦', footer: 'NHỮNG NGÀY ĐÁNG NHỚ' },
   { id: 'film-noir', name: 'Film 35 mm', category: 'vintage', title: '35 MM', icon: '', footer: 'MỘT CUỘN KỶ NIỆM' },
   { id: 'rose-note', name: 'Thư hồng', category: 'pastel', title: 'with love', icon: '♡', footer: 'GỬI CHO NGÀY SAU' },
