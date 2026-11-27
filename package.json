@@ -1,0 +1,14 @@
+{
+  "name": "photobooth",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local photobooth powered by Electron and gPhoto2",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron --no-sandbox .",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/gphoto.js && node --check src/renderer/templates.js && node --check src/renderer/newspaper.js && node --check src/renderer/app.js"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1"
+  }
+}

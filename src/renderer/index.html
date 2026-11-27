@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; media-src 'self' file:; style-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self' data: blob:" />
+    <title>Photobooth Studio</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body data-screen="template-start">
+    <div class="app-shell">
+      <main class="main-content">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">PHÒNG CHỤP CỦA BẠN <span>✦</span></p>
+            <h1 id="page-title">Khoảnh khắc đẹp, <em>theo cách của bạn.</em></h1>
+            <p id="page-subtitle" class="page-subtitle">Chọn bố cục, chụp một bộ ảnh, rồi chọn những khoảnh khắc đẹp nhất.</p>
+          </div>
+          <div class="topbar-actions">
+            <label class="video-source-label" for="video-source">Nguồn hình <select id="video-source" aria-label="Chọn camera hoặc capture card"><option value="">Đang tìm thiết bị…</option></select></label>
+            <button id="test-webcam" class="button button-webcam" type="button">Mở nguồn hình</button>
+            <button id="detect" class="button button-outline" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h4l2-2h4l2 2h4v12H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+              Quét lại camera
+            </button>
+          </div>
+        </div>
+
+        <div id="workspace" class="workspace">
+          <section class="stage-card" aria-labelledby="stage-title">
+            <div class="card-heading">
+              <div><span class="section-kicker">PREVIEW STUDIO</span><h2 id="stage-title">Xem trước khung ảnh</h2></div>
+              <span id="camera-badge" class="camera-badge"><span></span> Đang tìm camera</span>
+            </div>
+            <div class="stage" id="stage">
+              <div class="stage-glow glow-one"></div><div class="stage-glow glow-two"></div>
+              <span class="stage-star star-one">✳</span><span class="stage-star star-two">✦</span>
+              <div class="stage-caption">YOUR MOMENT<br><span>STARTS HERE</span></div>
+              <div class="print-mockup theme-cream" id="print-mockup" aria-label="Bản xem trước bố cục và màu khung">
+                <div class="print-heading">little moments <span>✳</span></div>
+                <div class="print-photos layout-strip" id="print-photos"></div>
+                <div class="print-decoration" aria-hidden="true"><span>Love in Bloom</span><img src="bouquet.svg" alt="" /></div>
+                <div class="print-footer"><span>PHOTOBOOTH · 2026</span><span>✦ ✦ ✦</span></div>
+                <div id="newspaper-page" class="newspaper-page" hidden>
+                  <div class="news-masthead"><div class="news-name"><span>BẢN TIN CỦ CHI</span></div><div class="news-issue">ĐẤT THÉP<br>THÀNH ĐỒNG<small>✳ Số đặc biệt ✳</small></div><span class="news-seal" aria-hidden="true">CC</span></div>
+                  <div class="news-folio"><span>✦</span> MỘT NGÀY Ở CỦ CHI <span>✦</span></div>
+                  <div class="news-headline">CÓ HẸN VỚI CỦ CHI</div>
+                  <div class="news-photo" id="news-photo"><span>ẢNH CỦA BẠN</span></div>
+                  <div class="news-divider">─── ✳ ─── ✳ ───</div>
+                  <div class="news-columns">
+                    <div class="news-column"><p>Địa đạo Củ Chi là dấu ấn của vùng đất thép thành đồng. Những lối đi dưới lòng đất lưu giữ câu chuyện về sự bền bỉ, sáng tạo và tình yêu quê hương. Mỗi chuyến ghé thăm lại mở ra một cách nhìn gần hơn với lịch sử. Giữa nhịp sống hôm nay, nơi ấy vẫn nhắc ta trân trọng những ngày bình yên. Khu di tích đưa người xem đến gần hơn với một thời gian khó và những con người đã đi qua thời ấy.</p></div>
+                    <div class="news-column"><p>Củ Chi còn có những con đường rợp bóng cây và một nhịp sống gần gũi. Đi cùng bạn bè, ta có thể dừng chân, trò chuyện và lưu lại vài tấm ảnh thật vui. Một buổi chiều nắng nhẹ cũng đủ thành kỷ niệm. Trang báo nhỏ này dành cho khoảnh khắc mà bạn muốn mang theo sau chuyến đi. Rồi khi xem lại, từng khuôn hình sẽ nhắc về tiếng cười và cảm giác được ở bên nhau.</p></div>
+                    <div class="news-column"><p>Có hẹn với Củ Chi là có hẹn với những câu chuyện cũ và niềm vui mới. Hãy giữ lại một nụ cười, một cuộc gặp và cả cảm giác háo hức của ngày hôm nay. Chuyến đi ngắn cũng có thể để lại một kỷ niệm dài lâu.</p><img src="assets/cu-chi-tunnel.jpg" alt="Lối vào địa đạo Củ Chi" /></div>
+                  </div>
+                  <div class="news-bottom">✦ CỦ CHI · MỘT NGÀY THẬT ĐẸP ✦</div>
+                </div>
+              </div>
+              <video id="webcam-preview" class="webcam-preview" autoplay muted playsinline hidden></video>
+              <img id="usb-preview" class="usb-preview" alt="Live preview từ máy ảnh USB" hidden />
+              <div id="recording-indicator" class="recording-indicator" hidden><span></span> REC <strong id="recording-time">00:00</strong></div>
+              <div class="captured-photo" id="photo-frame" hidden></div>
+              <div class="shoot-overlay" id="shoot-overlay" hidden>
+                <span id="shoot-overline">SẴN SÀNG CHỤP</span>
+                <strong id="shoot-number">10</strong>
+                <small id="shoot-caption">giây trước khi bắt đầu</small>
+              </div>
+              <button id="cancel-capture" class="button button-cancel" type="button" hidden>Dừng buổi chụp</button>
+              <div id="stage-bottom-note" class="stage-bottom-note"><span class="note-dot"></span> Bản xem trước bố cục · Chưa có live view</div>
+            </div>
+            <div class="stage-footer">
+              <div class="selection-summary"><span class="summary-icon">✧</span><span><small>BỐ CỤC</small><strong id="selected-template">Dải ảnh 1 × 4</strong></span></div>
+              <span id="stage-footer-hint" class="stage-footer-hint">Chọn bố cục → live preview → chụp</span>
+            </div>
+          </section>
+
+          <section class="control-card" aria-label="Thiết lập buổi chụp">
+            <div id="setup-controls" class="setup-controls" hidden>
+            <div class="control-heading"><span class="section-kicker">BƯỚC 2 · LIVE PREVIEW</span><h2>Sẵn sàng chụp</h2><p>Kiểm tra nguồn hình rồi bắt đầu buổi chụp.</p><button id="change-template" class="button button-outline" type="button">← Đổi bố cục</button></div>
+            <div class="capture-panel">
+              <div class="capture-copy"><span class="capture-icon">✦</span><span><strong>Sẵn sàng tạo dáng?</strong><small id="capture-description">Chụp 8 tấm, sau đó chọn ảnh yêu thích.</small></span></div>
+              <div class="shoot-settings">
+                <label>Chờ bắt đầu (giây)<input id="initial-delay" type="number" min="0" max="30" value="10" /></label>
+                <label>Cách nhau (giây)<input id="shot-interval" type="number" min="1" max="15" value="3" /></label>
+              </div>
+              <button id="capture" class="button button-primary" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h4l2-2h4l2 2h4v12H4z"/><circle cx="12" cy="13" r="3.5"/></svg> <span id="capture-label">Bắt đầu chụp 8 ảnh</span> <span class="button-arrow">→</span></button>
+              <p id="status" class="status-text" role="status">Đang tìm camera. Cắm camera qua USB và bật máy ảnh.</p>
+              <p id="saved-path" class="saved-path"></p>
+            </div>
+            </div>
+            <section id="template-panel" class="template-panel" aria-labelledby="template-title">
+              <div class="selection-heading"><div><span id="template-step" class="section-kicker">BƯỚC 1 · CHỌN BỐ CỤC</span><h2 id="template-title">Chọn bố cục</h2><p id="template-help">Chọn bố cục, sau đó chọn mẫu phù hợp.</p></div><span id="template-total" class="selection-count"></span></div>
+              <div id="layout-section" class="control-section">
+              <div class="layout-options" role="radiogroup" aria-label="Bố cục ảnh">
+                <label class="layout-option"><input type="radio" name="template" value="newspaper" checked /><span class="mini-layout mini-news">BÁO</span><strong>Báo Củ Chi</strong><small>1 ảnh</small></label>
+                <label class="layout-option"><input type="radio" name="template" value="strip" /><span class="mini-layout mini-strip"><i></i><i></i><i></i><i></i></span><strong>1 × 4</strong><small>Dải ảnh</small></label>
+                <label class="layout-option"><input type="radio" name="template" value="grid" /><span class="mini-layout mini-grid"><i></i><i></i><i></i><i></i></span><strong>2 × 2</strong><small>Lưới vuông</small></label>
+                <label class="layout-option"><input type="radio" name="template" value="group" /><span class="mini-layout mini-group"><i></i><i></i><i></i><i></i><i></i><i></i></span><strong>2 × 3</strong><small>Ảnh nhóm</small></label>
+              </div>
+            </div>
+              <div id="template-filters" class="template-filters" aria-label="Lọc template">
+                <button type="button" class="active" data-category="all">Tất cả</button>
+                <button type="button" data-category="minimal">Tối giản</button>
+                <button type="button" data-category="pastel">Pastel</button>
+                <button type="button" data-category="vintage">Film & Retro</button>
+                <button type="button" data-category="christmas">Noel</button>
+                <button type="button" data-category="party">Lễ hội & Y2K</button>
+              </div>
+              <div id="template-grid" class="template-grid"></div>
+              <div class="template-actions"><button id="edit-selection" class="button button-outline" type="button" hidden>Đổi ảnh đã chọn</button><button id="watch-video-template" class="button button-outline watch-video" type="button" hidden>Xem video</button><button id="final-confirm" class="button button-primary" type="button" disabled>Vào live preview →</button></div>
+              <small id="template-export-status" role="status"></small>
+            </section>
+          </section>
+        </div>
+
+        <section id="selection-panel" class="selection-panel" aria-labelledby="selection-title" hidden>
+          <div class="selection-heading">
+            <div><span class="section-kicker">BƯỚC 3 · CHỌN ẢNH</span><h2 id="selection-title">Những tấm ảnh vừa chụp</h2><p id="selection-instruction">Chọn 4 ảnh yêu thích trong bộ ảnh.</p></div>
+            <div class="selection-actions"><span id="selection-count" class="selection-count">Đã chọn 0/4</span><button id="retake-from-gallery" class="button button-outline" type="button">Chụp lại</button></div>
+          </div>
+          <div class="photo-mode" role="group" aria-label="Màu ảnh sau khi chụp"><strong>Màu ảnh</strong><button type="button" data-photo-mode="color" class="active" aria-pressed="true">Màu</button><button type="button" data-photo-mode="bw" aria-pressed="false">Trắng đen</button></div>
+          <div id="photo-gallery" class="photo-gallery"></div>
+          <div class="selection-footer"><span id="video-saved">Ảnh gốc đã được lưu trong máy.</span><div class="selection-footer-actions"><button id="watch-video-selection" class="button button-outline watch-video" type="button" hidden>Xem video</button><button id="confirm-selection" class="button button-primary" type="button" disabled>Xem thành phẩm →</button></div></div>
+        </section>
+        <footer class="app-footer"><span>✳ &nbsp; Một góc nhỏ dành cho những khoảnh khắc lớn.</span><span>PHOTOBOOTH STUDIO · LOCAL EDITION</span></footer>
+      </main>
+    </div>
+    <div id="qr-screen" class="qr-screen" role="dialog" aria-modal="true" aria-labelledby="qr-title" hidden>
+      <div class="qr-card">
+        <span class="section-kicker">BUỔI CHỤP HOÀN TẤT</span>
+        <h2 id="qr-title">Cảm ơn bạn đã ghé photobooth ✦</h2>
+        <p id="export-status">Ảnh đã chọn được lưu trong máy. QR hiện là minh họa.</p>
+        <div class="qr-art" aria-label="Hình QR minh họa, chưa thể quét">
+          <span class="qr-finder finder-one"></span><span class="qr-finder finder-two"></span><span class="qr-finder finder-three"></span>
+          <span class="qr-demo">QR DEMO</span>
+        </div>
+        <button id="next-guest" class="button button-primary" type="button">Bắt đầu cho khách tiếp theo →</button>
+        <small id="qr-timer">Tự trở về màn đầu sau 20 giây</small>
+      </div>
+    </div>
+    <div id="video-screen" class="video-screen" role="dialog" aria-modal="true" aria-labelledby="video-title" hidden>
+      <div class="video-card">
+        <div class="video-heading"><div><span class="section-kicker">VIDEO BUỔI CHỤP</span><h2 id="video-title">Xem lại khoảnh khắc</h2></div><button id="close-video" class="button button-outline" type="button">Đóng</button></div>
+        <video id="session-video" controls playsinline preload="metadata"></video>
+      </div>
+    </div>
+    <script src="templates.js"></script>
+    <script src="newspaper.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
