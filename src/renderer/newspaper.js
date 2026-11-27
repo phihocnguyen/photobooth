@@ -1,126 +1,172 @@
-// Draw the complete page at print resolution. Text and rules are rendered from
-// code; the selected original is sampled only once into its photo window.
-window.renderCuChiNewspaper = async function renderCuChiNewspaper(photoUrl, mode) {
-  await Promise.all([
-    document.fonts.load('italic 700 25px "News Condensed"'),
-    document.fonts.load('700 31px "News Condensed"')
-  ]);
-  const loadImage = (url) => new Promise((resolve, reject) => {
-    const source = new Image();
-    source.onload = () => resolve(source);
-    source.onerror = () => reject(new Error('Không đọc được ảnh để in báo.'));
-    source.src = url;
-  });
-  const [image, tunnel] = await Promise.all([
-    photoUrl, 'assets/cu-chi-tunnel.jpg'
-  ].map(loadImage));
-  const canvas = document.createElement('canvas');
-  const scale = 4.5;
-  canvas.width = Math.round(432 * scale);
-  canvas.height = Math.round(620 * scale);
+// One drawing path keeps the gallery, preview, and full-resolution JPEG in sync.
+const newspaperPhotos = new Map();
+const newspaperFont = '"Fraunces", Georgia, serif';
+const newspaperDateFormat = new Intl.DateTimeFormat('vi-VN', {
+  day: '2-digit', month: '2-digit', year: 'numeric'
+});
+const newspaperFontsReady = document.fonts.load('900 32px "Fraunces"', 'CÓ HẸN VỚI CỦ CHI')
+  .catch((error) => console.warn('Không tải được font trang báo.', error));
+
+window.newspaperPhotoCrop = function newspaperPhotoCrop(photo, [, , width, height]) {
+  const scale = Math.max(width / photo.naturalWidth, height / photo.naturalHeight);
+  const w = width / scale;
+  const h = height / scale;
+  return { w, h, overflowX: Math.max(0, photo.naturalWidth - w), overflowY: Math.max(0, photo.naturalHeight - h), scale };
+};
+
+window.drawCuChiNewspaper = function drawCuChiNewspaper(canvas, design, photo, mode, scale = 2, position = { x: .5, y: .5 }) {
+  const { paper, accent, ink, folio, bottom, masthead, caption, copy, layout } = design.newspaper;
+  const { photo: photoBox, art, articles, headline, issue } = layout;
+  canvas.width = 432 * scale;
+  canvas.height = 620 * scale;
   const ctx = canvas.getContext('2d', { alpha: false });
   ctx.scale(scale, scale);
-  const ink = '#464338';
-  const red = '#aa463b';
-  ctx.fillStyle = '#f4f0e5';
-  ctx.fillRect(0, 0, 432, 620);
-  // Restrained paper grain, drawn at the final canvas resolution.
-  ctx.fillStyle = 'rgba(110,92,65,.045)';
-  for (let y = 0; y < 620; y += 7) {
-    for (let x = (y * 17) % 11; x < 432; x += 13) ctx.fillRect(x, y, .45, .45);
+
+  function rect([x, y, w, h], color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w, h);
+  }
+
+  function line(x, y, endX, endY, color = ink) {
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+  }
+
+  function text(value, x, y, width, font, color = ink, align = 'center') {
+    ctx.fillStyle = color;
+    ctx.font = font + ' ' + newspaperFont;
+    ctx.textAlign = align;
+    ctx.fillText(value.normalize('NFC'), x, y, width);
+  }
+
+  function paragraph(value, [x, y, width], bottom) {
+    const font = '400 5.6px';
+    const columns = Math.ceil(width / 150);
+    const gutter = 8;
+    const w = (width - (columns - 1) * gutter) / columns;
+    ctx.font = font + ' ' + newspaperFont;
+    const lines = [];
+    let row = [];
+    for (const word of value.normalize('NFC').split(' ')) {
+      if (row.length && ctx.measureText([...row, word].join(' ')).width > w) {
+        lines.push(row);
+        row = [];
+      }
+      row.push(word);
+    }
+    if (row.length) lines.push(row);
+    const leading = 7.1;
+    const capacity = Math.max(1, Math.floor((bottom - y) / leading) + 1);
+    const perColumn = Math.min(capacity, Math.ceil(lines.length / columns));
+    const visible = lines.slice(0, perColumn * columns);
+    visible.forEach((words, index) => {
+      const xStart = x + Math.floor(index / perColumn) * (w + gutter);
+      const baseline = y + (index % perColumn) * leading;
+      if (index === visible.length - 1 && visible.length < lines.length) {
+        while (words.length && ctx.measureText(words.join(' ') + '…').width > w) words.pop();
+        text(words.join(' ') + '…', xStart, baseline, w, font, ink, 'left');
+      } else if (index === lines.length - 1) {
+        text(words.join(' '), xStart, baseline, w, font, ink, 'left');
+      } else {
+        const widths = words.map((part) => ctx.measureText(part).width);
+        const gap = words.length > 1 ? (w - widths.reduce((sum, wordWidth) => sum + wordWidth, 0)) / (words.length - 1) : 0;
+        let left = xStart;
+        words.forEach((part, wordIndex) => {
+          text(part, left, baseline, w, font, ink, 'left');
+          left += widths[wordIndex] + gap;
+        });
+      }
+    });
+  }
+
+  rect([0, 0, 432, 620], paper);
+  for (let y = 0; y < 620; y += 5) {
+    for (let x = y % 7; x < 432; x += 11) rect([x, y, .5, .5], '#5c422416');
+  }
+
+  ctx.strokeStyle = ink;
+  ctx.strokeRect(14, 18, 404, 83);
+  ctx.strokeRect(17, 21, 398, 77);
+  line(77, 35, 77, 84);
+  line(355, 35, 355, 84);
+  text(issue === 'ĐB' ? 'ĐẶC BIỆT' : 'SỐ ' + issue, 47, 53, 50, 'bold 12px');
+  text(newspaperDateFormat.format(Date.now()), 47, 70, 50, '700 8px');
+  text('CỦ CHI', 385, 53, 48, 'bold 11px');
+  text('✦', 385, 73, 40, '13px', accent);
+  line(180, 38, 204, 38, accent);
+  line(228, 38, 252, 38, accent);
+  text('✦', 216, 42, 16, '11px', accent);
+  text(masthead, 216, 70, 252, '900 29px');
+  text(caption, 216, 88, 251, '8px');
+
+  const [hx, hy, hw, fontSize = 33] = headline;
+  rect([hx, hy, hw, 18], accent);
+  text(folio, hx + hw / 2, hy + 13, hw - 9, 'bold 9px', paper);
+  text(design.title, hx + hw / 2, hy + 55, hw, '900 ' + fontSize + 'px');
+  line(hx, hy + 64, hx + hw, hy + 64);
+  line(hx, hy + 67, hx + hw, hy + 67);
+
+  const [px, py, pw, ph] = photoBox;
+  if (photo) {
+    const { w, h, overflowX, overflowY } = window.newspaperPhotoCrop(photo, photoBox);
+    ctx.save();
+    if (mode === 'bw') ctx.filter = 'grayscale(1) contrast(1.04)';
+    ctx.drawImage(photo, overflowX * position.x, overflowY * position.y, w, h, px, py, pw, ph);
+    ctx.restore();
+  } else {
+    rect(photoBox, '#d5d3cc');
+    text('ẢNH CỦA BẠN', px + pw / 2, py + ph / 2 + 5, pw - 10, 'bold 13px', '#57534e');
   }
   ctx.strokeStyle = ink;
-  ctx.lineWidth = .8;
-  ctx.strokeRect(16, 19, 400, 72);
-  ctx.strokeRect(19, 22, 394, 66);
-  ctx.strokeStyle = red;
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(29, 32); ctx.lineTo(257, 32); ctx.stroke();
-  ctx.strokeStyle = ink;
-  ctx.lineWidth = 2.2;
-  ctx.beginPath(); ctx.moveTo(29, 77); ctx.lineTo(257, 77); ctx.stroke();
-  ctx.fillStyle = '#34352f';
-  ctx.font = 'italic 700 25px "News Condensed", sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('BẢN TIN CỦ CHI', 143, 63, 222);
-  ctx.fillStyle = ink;
-  ctx.font = '14px Georgia, serif';
-  ctx.fillText('ĐẤT THÉP', 340, 47);
-  ctx.fillText('THÀNH ĐỒNG', 340, 61);
-  ctx.font = '8px Georgia, serif';
-  ctx.fillText('✳ Số đặc biệt ✳', 340, 75);
-  ctx.strokeStyle = red;
-  ctx.lineWidth = .7;
-  ctx.beginPath(); ctx.arc(397, 35, 8, 0, Math.PI * 2); ctx.stroke();
-  ctx.font = 'bold 6px Georgia, serif';
-  ctx.fillStyle = red;
-  ctx.fillText('CC', 397, 37);
-  ctx.strokeStyle = '#8e897d';
-  ctx.lineWidth = .5;
-  ctx.beginPath(); ctx.moveTo(104, 101); ctx.lineTo(155, 101); ctx.moveTo(277, 101); ctx.lineTo(328, 101); ctx.stroke();
-  ctx.fillStyle = '#686358';
-  ctx.font = '8px Georgia, serif';
-  ctx.fillText('✦  MỘT NGÀY Ở CỦ CHI  ✦', 216, 104);
-  ctx.fillStyle = ink;
-  ctx.font = '700 31px "News Condensed", sans-serif';
-  ctx.fillText('CÓ HẸN VỚI CỦ CHI', 216, 140, 400);
-  ctx.strokeStyle = ink;
-  ctx.lineWidth = 1.1;
-  ctx.strokeRect(16, 157, 400, 198);
-  const target = { x: 17, y: 158, w: 398, h: 196 };
-  function drawCover(source, box, vintage = false) {
-    const ratio = Math.max(box.w / source.naturalWidth, box.h / source.naturalHeight);
-    const w = box.w / ratio;
-    const h = box.h / ratio;
-    const sx = (source.naturalWidth - w) / 2;
-    const sy = (source.naturalHeight - h) / 2;
+  ctx.strokeRect(px, py, pw, ph);
+
+  const editorialPhoto = newspaperPhotos.get(design.id);
+  if (editorialPhoto) {
+    const { w, h, overflowX, overflowY } = window.newspaperPhotoCrop(editorialPhoto, art);
     ctx.save();
-    if (vintage) ctx.filter = 'sepia(.27) saturate(.78)';
-    ctx.drawImage(source, sx, sy, w, h, box.x, box.y, box.w, box.h);
+    ctx.filter = 'saturate(.64) sepia(.12)';
+    ctx.drawImage(editorialPhoto, overflowX / 2, overflowY / 2, w, h, ...art);
     ctx.restore();
   }
-  ctx.save();
-  if (mode === 'bw') ctx.filter = 'grayscale(1) contrast(1.04)';
-  drawCover(image, target);
-  ctx.restore();
-  ctx.font = '11px Georgia, serif';
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#777365';
-  ctx.fillText('────── ✳ ────── ✳ ────── ✳ ──────', 216, 374);
-  ctx.textAlign = 'left';
-  ctx.strokeStyle = '#aaa391';
-  ctx.lineWidth = .5;
-  ctx.beginPath(); ctx.moveTo(146, 382); ctx.lineTo(146, 566); ctx.moveTo(280, 382); ctx.lineTo(280, 566); ctx.stroke();
-  drawCover(tunnel, { x: 286, y: 481, w: 128, h: 77 }, true);
-  const columns = [
-    'Địa đạo Củ Chi là dấu ấn của vùng đất thép thành đồng. Những lối đi dưới lòng đất lưu giữ câu chuyện về sự bền bỉ, sáng tạo và tình yêu quê hương. Mỗi chuyến ghé thăm lại mở ra một cách nhìn gần hơn với lịch sử. Giữa nhịp sống hôm nay, nơi ấy vẫn nhắc ta trân trọng những ngày bình yên. Khu di tích đưa người xem đến gần hơn với một thời gian khó và những con người đã đi qua thời ấy.',
-    'Củ Chi còn có những con đường rợp bóng cây và một nhịp sống gần gũi. Đi cùng bạn bè, ta có thể dừng chân, trò chuyện và lưu lại vài tấm ảnh thật vui. Một buổi chiều nắng nhẹ cũng đủ thành kỷ niệm. Trang báo nhỏ này dành cho khoảnh khắc mà bạn muốn mang theo sau chuyến đi. Rồi khi xem lại, từng khuôn hình sẽ nhắc về tiếng cười và cảm giác được ở bên nhau.',
-    'Có hẹn với Củ Chi là có hẹn với những câu chuyện cũ và niềm vui mới. Hãy giữ lại một nụ cười, một cuộc gặp và cả cảm giác háo hức của ngày hôm nay. Chuyến đi ngắn cũng có thể để lại một kỷ niệm dài lâu.'
-  ];
-  const boxes = [[17, 126], [152, 124], [286, 128]];
-  ctx.fillStyle = ink;
-  ctx.font = '9.4px Georgia, serif';
-  columns.forEach((copy, index) => {
-    const [left, width] = boxes[index];
-    const words = copy.split(' ');
-    let line = '';
-    let y = 395;
-    for (const word of words) {
-      const next = line ? `${line} ${word}` : word;
-      if (ctx.measureText(next).width > width && line) {
-        if (y > (index === 2 ? 475 : 558)) break;
-        ctx.fillText(line, left, y);
-        y += 12;
-        line = word;
-      } else line = next;
-    }
-    if (line && y <= (index === 2 ? 475 : 558)) ctx.fillText(line, left, y);
+  for (const x of layout.columnRules || []) line(x, articles[0][1] - 19, x, 566, '#887d70');
+  const obstacles = [art, photoBox, ...articles.map(([x, y, w]) => [x, y - 10, w])];
+  articles.forEach(([x, y, w], index) => {
+    const bottom = Math.min(566, ...obstacles
+      .filter(([left, top, width]) => top > y && left < x + w && left + width > x)
+      .map(([, top]) => top - 6));
+    line(x, y - 10, x + w, y - 10, accent);
+    paragraph(copy[index] + ' ' + design.newspaper.extraCopy[index], [x, y, w], bottom);
   });
-  ctx.strokeStyle = ink;
-  ctx.lineWidth = .8;
-  ctx.beginPath(); ctx.moveTo(16, 579); ctx.lineTo(416, 579); ctx.stroke();
-  ctx.textAlign = 'center';
-  ctx.font = '10px Georgia, serif';
-  ctx.fillText('✦  CỦ CHI · MỘT NGÀY THẬT ĐẸP  ✦', 216, 597);
+
+  line(14, 580, 418, 580);
+  text('✦  ' + bottom + '  ✦', 216, 600, 380, 'bold 10px', accent);
+};
+
+window.loadNewspaperPhoto = async function loadNewspaperPhoto(url) {
+  const photo = new Image();
+  photo.src = url;
+  await photo.decode();
+  return photo;
+};
+
+window.newspaperAssetsReady = Promise.all([
+  newspaperFontsReady,
+  ...window.PHOTO_TEMPLATES.filter((design) => design.newspaper).map(async (design) => {
+    try {
+      const photo = await window.loadNewspaperPhoto('assets/news-' + design.newspaper.editorialPhoto + '.jpg');
+      newspaperPhotos.set(design.id, photo);
+    } catch (error) {
+      console.warn('Unable to load newspaper photo:', design.id, error);
+    }
+  })
+]);
+
+window.renderCuChiNewspaper = async function renderCuChiNewspaper(photoUrl, mode, design, position) {
+  const [photo] = await Promise.all([window.loadNewspaperPhoto(photoUrl), window.newspaperAssetsReady]);
+  const canvas = document.createElement('canvas');
+  window.drawCuChiNewspaper(canvas, design, photo, mode, 4.5, position);
   return canvas.toDataURL('image/jpeg', .96);
 };

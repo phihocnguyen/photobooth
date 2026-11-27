@@ -12,6 +12,7 @@ const { pathToFileURL } = require("node:url");
 const { detectCamera, capturePhoto, capturePreview } = require("./gphoto");
 
 const videoSessions = new Map();
+const photoTestMode = process.argv.includes("--test-photos");
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -19,8 +20,8 @@ function createWindow() {
     height: 860,
     minWidth: 960,
     minHeight: 680,
-    fullscreen: true,
-    frame: false,
+    fullscreen: !photoTestMode,
+    frame: photoTestMode,
     autoHideMenuBar: true,
     backgroundColor: "#0c1021",
     webPreferences: {
@@ -32,7 +33,9 @@ function createWindow() {
   });
 
   window.setMenuBarVisibility(false);
-  window.loadFile(path.join(__dirname, "renderer", "index.html"));
+  const renderer = path.join(__dirname, "renderer", "index.html");
+  if (photoTestMode) window.loadFile(renderer, { query: { testPhotos: "1" } });
+  else window.loadFile(renderer);
 }
 
 app.whenReady().then(() => {
@@ -80,7 +83,7 @@ app.whenReady().then(() => {
     }
     const outputDir = path.join(app.getPath("userData"), "captures");
     await fs.mkdir(outputDir, { recursive: true });
-    const filePath = path.join(outputDir, `webcam-${Date.now()}.jpg`);
+    const filePath = path.join(outputDir, `webcam-${Date.now()}-${crypto.randomUUID()}.jpg`);
     const data = Buffer.from(
       dataUrl.slice("data:image/jpeg;base64,".length),
       "base64",

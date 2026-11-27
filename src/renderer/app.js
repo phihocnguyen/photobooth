@@ -1,4 +1,6 @@
 const status = document.getElementById('status');
+const importButton = document.getElementById('import-photos');
+const photoTestMode = new URLSearchParams(window.location.search).has('testPhotos');
 const captureButton = document.getElementById('capture');
 const detectButton = document.getElementById('detect');
 const photoFrame = document.getElementById('photo-frame');
@@ -7,7 +9,6 @@ const cameraBadge = document.getElementById('camera-badge');
 const printMockup = document.getElementById('print-mockup');
 const printPhotos = document.getElementById('print-photos');
 const newspaperPage = document.getElementById('newspaper-page');
-const newsPhoto = document.getElementById('news-photo');
 const selectedTemplate = document.getElementById('selected-template');
 const webcamButton = document.getElementById('test-webcam');
 const videoSourceSelect = document.getElementById('video-source');
@@ -60,7 +61,6 @@ const qrTimer = document.getElementById('qr-timer');
 const nextGuestButton = document.getElementById('next-guest');
 const printHeading = document.querySelector('.print-heading');
 const printFooter = document.querySelector('.print-footer');
-const printDecoration = document.querySelector('.print-decoration');
 const templateExportStatus = document.getElementById('template-export-status');
 const exportStatus = document.getElementById('export-status');
 const VIDEO_FPS = 18;
@@ -80,6 +80,7 @@ photoModeButtons.forEach((button) => button.addEventListener('click', () => {
 
 let capturedPhotos = [];
 let chosenIndices = [];
+const newspaperPositions = new Map();
 let templateUnlocked = false;
 let activeTemplateId = null;
 let activeFilter = 'all';
@@ -118,39 +119,111 @@ const layouts = {
   group: { label: 'Ảnh nhóm 2 × 3', count: 6 }
 };
 const templates = window.PHOTO_TEMPLATES;
+const defaultNewspaper = templates.find((design) => design.newspaper);
+
 const categoryNames = {
-  minimal: 'Tối giản', pastel: 'Pastel', vintage: 'Film & Retro',
-  christmas: 'Noel', party: 'Lễ hội & Y2K'
+  minimal: 'Tối giản', pastel: 'Pastel', vintage: 'Film & Retro'
 };
+
+function createFrameSamplePhoto(index) {
+  const image = document.createElement('img');
+  image.className = 'frame-sample-photo';
+  image.src = `assets/frame-sample-${index + 1}.jpg`;
+  image.alt = '';
+  return image;
+}
 
 function selected(name) {
   return document.querySelector(`input[name="${name}"]:checked`).value;
 }
 
+function newspaperPositionKey(design) {
+  return `${design.id}:${chosenIndices[0]}`;
+}
+
+function enableNewspaperPositioning(canvas, design, image, mode, key) {
+  const box = design.newspaper.layout.photo;
+  const [x, y, w, h] = box;
+  const crop = window.newspaperPhotoCrop(image, box);
+  const travelX = crop.overflowX * crop.scale;
+  const travelY = crop.overflowY * crop.scale;
+  if (travelX < .001 && travelY < .001) return;
+
+  const adjustment = document.createElement('button');
+  adjustment.type = 'button';
+  adjustment.className = 'newspaper-photo-adjustment';
+  adjustment.setAttribute('aria-label', 'Căn ảnh bằng phím mũi tên. Nhấn Home để đưa ảnh về giữa.');
+  Object.assign(adjustment.style, {
+    left: `${x / 432 * 100}%`, top: `${y / 620 * 100}%`,
+    width: `${w / 432 * 100}%`, height: `${h / 620 * 100}%`
+  });
+  newspaperPage.append(adjustment);
+
+  const getPosition = () => newspaperPositions.get(key) || { x: .5, y: .5 };
+  function moveFrom(start, dx, dy) {
+    if (finalConfirmButton.disabled) return;
+    const clamp = (value) => Math.min(1, Math.max(0, value));
+    const position = {
+      x: travelX >= .001 ? clamp(start.x - dx / travelX) : .5,
+      y: travelY >= .001 ? clamp(start.y - dy / travelY) : .5
+    };
+    newspaperPositions.set(key, position);
+    window.drawCuChiNewspaper(canvas, design, image, mode, 2, position);
+  }
+
+  let drag;
+  adjustment.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || drag || finalConfirmButton.disabled) return;
+    adjustment.setPointerCapture(event.pointerId);
+    drag = { id: event.pointerId, x: event.clientX, y: event.clientY, position: getPosition() };
+  });
+  adjustment.addEventListener('pointermove', (event) => {
+    if (drag?.id !== event.pointerId) return;
+    const bounds = canvas.getBoundingClientRect();
+    moveFrom(drag.position, (event.clientX - drag.x) * 432 / bounds.width, (event.clientY - drag.y) * 620 / bounds.height);
+  });
+  adjustment.addEventListener('lostpointercapture', () => { drag = undefined; });
+  adjustment.addEventListener('keydown', (event) => {
+    const offsets = { ArrowLeft: [-8, 0], ArrowRight: [8, 0], ArrowUp: [0, -8], ArrowDown: [0, 8] };
+    if (event.key === 'Home') {
+      event.preventDefault();
+      moveFrom({ x: .5, y: .5 }, 0, 0);
+    } else if (Object.hasOwn(offsets, event.key)) {
+      event.preventDefault();
+      moveFrom(getPosition(), ...offsets[event.key]);
+    }
+  });
+}
+
 function updatePreview() {
   const layout = selected('template');
-  const design = (templateUnlocked || layout === 'newspaper') ? templates.find((item) => item.id === (activeTemplateId || (layout === 'newspaper' ? 'cu-chi-news' : ''))) : null;
+  const design = templateUnlocked ? templates.find((item) => item.id === activeTemplateId)
+    : layout === 'newspaper' ? defaultNewspaper : null;
   printMockup.className = design
-    ? `print-mockup design-${design.id} pattern-${design.pattern}`
+    ? `print-mockup design-${design.id} ${design.newspaper ? 'design-cu-chi-paper' : 'frame-template'}`
     : 'print-mockup theme-neutral';
   printHeading.firstChild.textContent = design ? `${design.title} ` : 'little moments ';
-  printHeading.hidden = design?.id === 'letter-frame';
-  printHeading.lastElementChild.textContent = design?.icon || '✳';
+  printHeading.lastElementChild.textContent = design ? design.icon : '✳';
   printFooter.firstElementChild.textContent = design?.footer || 'PHOTOBOOTH · 2026';
-  printFooter.lastElementChild.textContent = design ? `${design.icon} ${design.icon} ${design.icon}` : '✦ ✦ ✦';
-  printDecoration.firstElementChild.textContent = design?.id === 'letter-frame' ? '★ SPECIAL DELIVERY ★' : 'Love in Bloom';
-  const isNews = design?.id === 'cu-chi-news';
+  printFooter.lastElementChild.textContent = design ? design.icon : '✦ ✦ ✦';
+  const isNews = Boolean(design?.newspaper);
   newspaperPage.hidden = !isNews;
-  newsPhoto.replaceChildren();
   if (isNews) {
+    const canvas = document.createElement('canvas');
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', `Bản xem trước mẫu báo ${design.name}`);
+    newspaperPage.replaceChildren(canvas);
     const photo = capturedPhotos[chosenIndices[0]];
+    const mode = photoMode;
+    const key = newspaperPositionKey(design);
+    window.drawCuChiNewspaper(canvas, design);
     if (photo) {
-      const image = document.createElement('img');
-      image.src = photo.dataUrl;
-      image.classList.toggle('photo-bw', photoMode === 'bw');
-      image.alt = 'Ảnh trên trang báo';
-      newsPhoto.append(image);
-    } else newsPhoto.textContent = 'ẢNH CỦA BẠN';
+      window.loadNewspaperPhoto(photo.dataUrl).then((image) => {
+        if (newspaperPage.hidden || !canvas.isConnected) return;
+        window.drawCuChiNewspaper(canvas, design, image, mode, 2, newspaperPositions.get(key));
+        if (document.body.dataset.screen === 'template') enableNewspaperPositioning(canvas, design, image, mode, key);
+      }).catch((error) => console.warn('Không đọc được ảnh xem trước của trang báo.', error));
+    }
   }
   printPhotos.className = `print-photos layout-${layout}`;
   printPhotos.replaceChildren(...Array.from({ length: layouts[layout].count }, (_, index) => {
@@ -165,18 +238,21 @@ function updatePreview() {
       slot.append(image);
     } else {
       slot.textContent = String(index + 1).padStart(2, '0');
+      if (design && !isNews) slot.append(createFrameSamplePhoto(index));
     }
     return slot;
   }));
-  selectedTemplate.textContent = isNews ? layouts[layout].label : design ? `${layouts[layout].label} · ${design.name}` : layouts[layout].label;
+  selectedTemplate.textContent = design && templateUnlocked ? `${layouts[layout].label} · ${design.name}` : layouts[layout].label;
 }
 
 function renderTemplates() {
   const picking = document.body.dataset.screen === 'template-start';
-  const isNewsLayout = selected('template') === 'newspaper';
+  const layout = selected('template');
+  const isNewsLayout = layout === 'newspaper';
   templateFilters.hidden = !picking || isNewsLayout;
+  templateGrid.classList.toggle('newspaper-grid', isNewsLayout);
   const available = picking
-    ? templates.filter((item) => (item.id === 'cu-chi-news') === isNewsLayout)
+    ? templates.filter((item) => Boolean(item.newspaper) === isNewsLayout)
     : templates.filter((item) => item.id === activeTemplateId);
   const shown = activeFilter === 'all' ? available : available.filter((item) => item.category === activeFilter);
   templateTotal.textContent = `${shown.length} mẫu`;
@@ -188,22 +264,29 @@ function renderTemplates() {
     button.classList.toggle('selected', activeTemplateId === design.id);
     button.setAttribute('aria-pressed', String(activeTemplateId === design.id));
     button.setAttribute('aria-label', `Chọn template ${design.name}`);
-    const sample = document.createElement('span');
-    sample.className = `template-sample pattern-${design.pattern}`;
-    const title = document.createElement('span');
-    title.className = 'template-sample-title';
-    title.textContent = `${design.title} ${design.icon}`;
-    const photos = document.createElement('span');
-    photos.className = 'template-sample-photos';
-    for (let index = 0; index < (design.id === 'cu-chi-news' ? 1 : 4); index++) photos.append(document.createElement('i'));
-    const footer = document.createElement('span');
-    footer.className = 'template-sample-footer';
-    footer.textContent = design.footer;
-    sample.append(title, photos, footer);
+    const sample = document.createElement(design.newspaper ? 'canvas' : 'span');
+    if (design.newspaper) {
+      sample.className = 'newspaper-sample';
+      sample.setAttribute('aria-hidden', 'true');
+      window.drawCuChiNewspaper(sample, design, null, null, 0.5);
+    } else {
+      sample.className = `template-sample frame-template frame-sample-${layout}`;
+      sample.setAttribute('aria-hidden', 'true');
+      const title = document.createElement('span');
+      title.className = 'template-sample-title';
+      title.textContent = design.title;
+      const photos = document.createElement('span');
+      photos.className = 'template-sample-photos';
+      for (let index = 0; index < layouts[layout].count; index++) photos.append(createFrameSamplePhoto(index));
+      const footer = document.createElement('span');
+      footer.className = 'template-sample-footer';
+      footer.textContent = design.footer;
+      sample.append(title, photos, footer);
+    }
     const name = document.createElement('strong');
     name.textContent = design.name;
     const category = document.createElement('small');
-    category.textContent = categoryNames[design.category];
+    category.textContent = design.newspaper ? 'Báo Củ Chi' : categoryNames[design.category];
     button.append(sample, name, category);
     button.addEventListener('click', () => {
       activeTemplateId = design.id;
@@ -231,7 +314,8 @@ templateFilters.addEventListener('click', (event) => {
 
 document.querySelectorAll('input[name="template"]').forEach((input) => {
   input.addEventListener('change', () => {
-    if ((activeTemplateId === 'cu-chi-news') !== (input.value === 'newspaper')) {
+    const activeDesign = templates.find((design) => design.id === activeTemplateId);
+    if (Boolean(activeDesign?.newspaper) !== (input.value === 'newspaper')) {
       activeTemplateId = null;
       templateUnlocked = false;
       finalConfirmButton.disabled = true;
@@ -327,7 +411,7 @@ function setCameraBadge(connected, label) {
 }
 
 async function checkCamera(manual = false) {
-  if (detecting || capturing) return;
+  if (photoTestMode || detecting || capturing) return;
   detecting = true;
   updateCaptureButton();
   if (manual && captureSource === 'gphoto') status.textContent = 'Đang kiểm tra camera…';
@@ -370,7 +454,7 @@ async function checkCamera(manual = false) {
 
 detectButton.addEventListener('click', () => checkCamera(true));
 checkCamera();
-setInterval(() => checkCamera(), 4000);
+if (!photoTestMode) setInterval(() => checkCamera(), 4000);
 window.addEventListener('focus', () => checkCamera());
 
 function stopWebcam(suppressAuto = false) {
@@ -535,9 +619,11 @@ webcamButton.addEventListener('click', () => {
 videoSourceSelect.addEventListener('change', () => {
   if (videoSourceSelect.value) openVideoSource(videoSourceSelect.value);
 });
-navigator.mediaDevices?.addEventListener?.('devicechange', scanVideoDevices);
-scanVideoDevices();
-setInterval(scanVideoDevices, 3000);
+if (!photoTestMode) {
+  navigator.mediaDevices?.addEventListener?.('devicechange', scanVideoDevices);
+  scanVideoDevices();
+  setInterval(scanVideoDevices, 3000);
+}
 window.addEventListener('beforeunload', stopWebcam);
 
 function configValue(input, min, max) {
@@ -608,15 +694,23 @@ function showScreen(screen) {
   setupControls.hidden = screen !== 'setup';
   templatePanel.hidden = !['template-start', 'template'].includes(screen);
   editSelectionButton.hidden = screen !== 'template';
-  finalConfirmButton.textContent = screen === 'template-start' ? 'Vào live preview →' : 'Xác nhận →';
+  importButton.hidden = screen !== 'template-start';
+  finalConfirmButton.textContent = screen === 'template-start'
+    ? 'Vào live preview →'
+    : 'Xác nhận →';
   templateStep.textContent = screen === 'template-start' ? 'BƯỚC 1 · CHỌN BỐ CỤC' : 'BƯỚC 4 · XEM LẠI';
   templateTitle.textContent = screen === 'template-start' ? 'Chọn bố cục' : 'Xem lại thành phẩm';
   templateHelp.textContent = screen === 'template-start'
     ? 'Chọn bố cục, sau đó chọn mẫu phù hợp.'
-    : 'Ảnh đã chọn nằm trên mẫu ở bên trái.';
+    : selected('template') === 'newspaper' && screen === 'template'
+      ? 'Kéo ảnh trong khung để căn lại phần hiển thị, hoặc dùng phím mũi tên khi khung ảnh được chọn.'
+      : 'Ảnh đã chọn nằm trên mẫu ở bên trái.';
   layoutSection.hidden = screen !== 'template-start';
+  finalConfirmButton.hidden = photoTestMode && screen === 'template-start';
   const copy = {
-    'template-start': ['Chọn bố cục cho bộ ảnh.', 'Chọn bố cục và mẫu, rồi xem trực tiếp và chụp 8 ảnh.'],
+    'template-start': photoTestMode
+      ? ['Chạy thử bằng ảnh có sẵn.', 'Chọn bố cục và mẫu, rồi nạp ảnh từ máy.']
+      : ['Chọn bố cục cho bộ ảnh.', 'Chọn bố cục và mẫu, rồi xem trực tiếp và chụp 8 ảnh.'],
     setup: ['Sẵn sàng cho buổi chụp.', 'Kiểm tra live preview và chụp 8 ảnh.'],
     selection: ['Chọn những tấm ảnh bạn thích nhất.', 'Chọn ảnh để đưa vào template đã chọn.'],
     template: ['Xem lại thành phẩm của bạn.', 'Kiểm tra ảnh trên template trước khi lưu.']
@@ -628,6 +722,10 @@ function showScreen(screen) {
 }
 
 showScreen('template-start');
+window.newspaperAssetsReady.then(() => {
+  if (selected('template') === 'newspaper') updatePreview();
+  if (['template-start', 'template'].includes(document.body.dataset.screen)) renderTemplates();
+});
 
 confirmButton.addEventListener('click', () => {
   const needed = layouts[selected('template')].count;
@@ -640,6 +738,7 @@ confirmButton.addEventListener('click', () => {
 });
 
 function resetSession() {
+  newspaperPositions.clear();
   templateChosen = false;
   stopWebcam();
   photoMode = 'color';
@@ -697,6 +796,73 @@ function closeQrScreen() {
 }
 
 nextGuestButton.addEventListener('click', closeQrScreen);
+
+function openPhotoPicker() {
+  if (!activeTemplateId) templateGrid.querySelector('.template-choice')?.click();
+  if (!activeTemplateId) return;
+  const picker = document.createElement('input');
+  picker.type = 'file';
+  picker.accept = 'image/jpeg,image/png,image/webp';
+  picker.multiple = true;
+  picker.hidden = true;
+  document.body.append(picker);
+  picker.addEventListener('cancel', () => picker.remove(), { once: true });
+  picker.addEventListener('change', async () => {
+    const files = Array.from(picker.files);
+    picker.remove();
+    const needed = layouts[selected('template')].count;
+    if (files.length < needed) {
+      templateExportStatus.textContent = `Chọn ít nhất ${needed} ảnh để thử bố cục này.`;
+      return;
+    }
+    finalConfirmButton.disabled = true;
+    importButton.disabled = true;
+    layoutSection.inert = templateGrid.inert = templateFilters.inert = true;
+    templateExportStatus.textContent = 'Đang nạp ảnh thử…';
+    try {
+      const photos = [];
+      const failures = [];
+      for (const file of files) {
+        const url = URL.createObjectURL(file);
+        try {
+          const image = await window.loadNewspaperPhoto(url);
+          const canvas = document.createElement('canvas');
+          const ratio = Math.min(1, 4096 / Math.max(image.naturalWidth, image.naturalHeight));
+          canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
+          canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
+          const context = canvas.getContext('2d', { alpha: false });
+          context.fillStyle = '#fff';
+          context.fillRect(0, 0, canvas.width, canvas.height);
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+          photos.push(await window.photobooth.saveWebcamPhoto(canvas.toDataURL('image/jpeg', .92)));
+        } catch {
+          failures.push(file.name);
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      }
+      if (photos.length < needed) {
+        templateExportStatus.textContent = `Chỉ nạp được ${photos.length}/${needed} ảnh cần thiết. Hãy chọn ảnh khác.`;
+        return;
+      }
+      templateExportStatus.textContent = '';
+      newspaperPositions.clear();
+      capturedPhotos = photos;
+      chosenIndices = [];
+      if (failures.length) videoSaved.textContent = `Không nạp được: ${failures.join(', ')}.`;
+      updateSelection();
+      showScreen('selection');
+    } finally {
+      layoutSection.inert = templateGrid.inert = templateFilters.inert = false;
+      importButton.disabled = false;
+      finalConfirmButton.disabled = !activeTemplateId;
+    }
+  }, { once: true });
+  picker.click();
+}
+
+importButton.addEventListener('click', openPhotoPicker);
+
 finalConfirmButton.addEventListener('click', async () => {
   if (document.body.dataset.screen === 'template-start') {
     if (!activeTemplateId) return;
@@ -731,9 +897,11 @@ finalConfirmButton.addEventListener('click', async () => {
       files.push(await window.photobooth.saveExport(canvas.toDataURL('image/jpeg', .94)));
     }
     let pageFile = null;
-    if (activeTemplateId === 'cu-chi-news') {
+    const design = templates.find((item) => item.id === activeTemplateId);
+    if (design?.newspaper) {
       const original = await window.photobooth.fullPhoto(capturedPhotos[chosenIndices[0]].filePath);
-      pageFile = await window.photobooth.saveExport(await window.renderCuChiNewspaper(original, photoMode));
+      const position = newspaperPositions.get(newspaperPositionKey(design));
+      pageFile = await window.photobooth.saveExport(await window.renderCuChiNewspaper(original, photoMode, design, position));
     }
     exportStatus.textContent = `Đã lưu ${files.length} ảnh gốc đã chọn${pageFile ? ` và tờ báo tại ${pageFile}` : ''}. QR hiện là minh họa.`;
   } catch (error) {
@@ -882,6 +1050,7 @@ captureButton.addEventListener('click', async () => {
   let videoController = null;
   capturing = true;
   cancelRequested = false;
+  newspaperPositions.clear();
   capturedPhotos = [];
   chosenIndices = [];
   lastVideoUrl = null;

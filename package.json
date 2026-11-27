@@ -6,6 +6,7 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron --no-sandbox .",
+    "test:photos": "electron --no-sandbox . --test-photos",
     "check": "node --check src/main.js && node --check src/preload.js && node --check src/gphoto.js && node --check src/renderer/templates.js && node --check src/renderer/newspaper.js && node --check src/renderer/app.js"
   },
   "devDependencies": {
