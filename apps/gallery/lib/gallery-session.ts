@@ -29,8 +29,9 @@ export async function loadAlbum(token: string): Promise<{
     const response = await fetch(`${apiBase}/api/session/${token}`, {
       cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(8000)
     });
-    if (response.status === 404) return { apiBase, state: 'missing' };
-    if (response.status === 410) return { apiBase, state: 'expired' };
+    const json = response.headers.get('content-type')?.includes('application/json');
+    if (response.status === 404 && json) return { apiBase, state: 'missing' };
+    if (response.status === 410 && json) return { apiBase, state: 'expired' };
     if (!response.ok) return { apiBase, state: 'unavailable' };
     const data: Album = await response.json();
     if (typeof data.ready !== 'boolean' || !Number.isInteger(data.originalCount) || data.originalCount < 0 ||
