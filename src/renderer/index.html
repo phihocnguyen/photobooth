@@ -43,13 +43,12 @@
                 <div id="newspaper-page" class="newspaper-page" hidden></div>
               </div>
               <video id="webcam-preview" class="webcam-preview" autoplay muted playsinline hidden></video>
+              <p id="video-signal-notice" class="video-signal-notice" role="status" hidden>Đang chờ tín hiệu camera…</p>
               <img id="usb-preview" class="usb-preview" alt="Live preview từ máy ảnh USB" hidden />
               <div id="recording-indicator" class="recording-indicator" hidden><span></span> REC <strong id="recording-time">00:00</strong></div>
-              <div class="captured-photo" id="photo-frame" hidden></div>
               <div class="shoot-overlay" id="shoot-overlay" hidden>
-                <span id="shoot-overline">SẴN SÀNG CHỤP</span>
-                <strong id="shoot-number">10</strong>
-                <small id="shoot-caption">giây trước khi bắt đầu</small>
+                <span class="shoot-progress" id="shoot-progress" aria-live="polite"></span>
+                <strong id="shoot-number" hidden></strong>
               </div>
               <button id="cancel-capture" class="button button-cancel" type="button" hidden>Dừng buổi chụp</button>
               <div id="stage-bottom-note" class="stage-bottom-note"><span class="note-dot"></span> Bản xem trước bố cục · Chưa có live view</div>
@@ -128,6 +127,7 @@
     <script src="templates.js"></script>
     <script src="newspaper.js"></script>
     <script src="frame-export.js"></script>
+    <script src="video-signal.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

@@ -3,7 +3,6 @@ const importButton = document.getElementById('import-photos');
 const photoTestMode = new URLSearchParams(window.location.search).has('testPhotos');
 const captureButton = document.getElementById('capture');
 const detectButton = document.getElementById('detect');
-const photoFrame = document.getElementById('photo-frame');
 const savedPath = document.getElementById('saved-path');
 const cameraBadge = document.getElementById('camera-badge');
 const printMockup = document.getElementById('print-mockup');
@@ -13,6 +12,7 @@ const selectedTemplate = document.getElementById('selected-template');
 const webcamButton = document.getElementById('test-webcam');
 const videoSourceSelect = document.getElementById('video-source');
 const webcamPreview = document.getElementById('webcam-preview');
+const videoSignalNotice = document.getElementById('video-signal-notice');
 const usbPreview = document.getElementById('usb-preview');
 const recordingIndicator = document.getElementById('recording-indicator');
 const recordingTime = document.getElementById('recording-time');
@@ -27,9 +27,8 @@ const closeVideoButton = document.getElementById('close-video');
 const stageBottomNote = document.getElementById('stage-bottom-note');
 const stageFooterHint = document.getElementById('stage-footer-hint');
 const shootOverlay = document.getElementById('shoot-overlay');
-const shootOverline = document.getElementById('shoot-overline');
+const shootProgress = document.getElementById('shoot-progress');
 const shootNumber = document.getElementById('shoot-number');
-const shootCaption = document.getElementById('shoot-caption');
 const initialDelayInput = document.getElementById('initial-delay');
 const shotIntervalInput = document.getElementById('shot-interval');
 const captureLabel = document.getElementById('capture-label');
@@ -343,6 +342,9 @@ let detecting = false;
 let capturing = false;
 let webcamStarting = false;
 let webcamStream = null;
+let videoSignalReady = false;
+let videoSignalTimer;
+let captureUsesVideo = false;
 let captureSource = 'gphoto';
 let cancelRequested = false;
 let activeVideoDeviceId = '';
@@ -394,7 +396,7 @@ function preferredVideoDevice(devices, addedIds, allowNewDevice) {
 
 function updateCaptureButton() {
   const captureCardWithoutUsb = webcamStream && captureCardName.test(activeVideoLabel) && !cameraConnected;
-  captureButton.disabled = !templateChosen || capturing || detecting || webcamStarting ||
+  captureButton.disabled = !templateChosen || capturing || detecting || webcamStarting || (webcamStream && !videoSignalReady) ||
     (captureSource === 'gphoto' && !cameraConnected) ||
     (captureSource === 'webcam' && (!webcamStream || captureCardWithoutUsb));
   detectButton.disabled = detecting || capturing;
@@ -463,6 +465,8 @@ window.addEventListener('focus', () => checkCamera());
 
 function stopWebcam(suppressAuto = false) {
   if (suppressAuto) autoVideoSuppressed = true;
+  clearInterval(videoSignalTimer);
+  videoSignalReady = false;
   webcamStream?.getTracks().forEach((track) => track.stop());
   webcamStream = null;
   activeVideoDeviceId = '';
@@ -485,7 +489,40 @@ function syncStagePreview() {
   const showUsbPreview = Boolean(!webcamStream && cameraConnected && usbPreviewReady && document.body.dataset.screen === 'setup');
   webcamPreview.hidden = !showLiveView;
   usbPreview.hidden = !showUsbPreview;
-  printMockup.hidden = showLiveView || showUsbPreview;
+  printMockup.hidden = capturing || showLiveView || showUsbPreview;
+  const videoDisconnected = capturing && captureUsesVideo && !webcamStream;
+  videoSignalNotice.hidden = !videoDisconnected && !(showLiveView && !videoSignalReady);
+  const message = videoDisconnected ? 'Nguồn video đã ngắt kết nối.' : 'Đang chờ tín hiệu camera…';
+  if (videoSignalNotice.textContent !== message) videoSignalNotice.textContent = message;
+}
+
+function videoFrameIsUsable() {
+  const track = webcamStream?.getVideoTracks()[0];
+  return Boolean(track && track.readyState === 'live' && !track.muted &&
+    !webcamPreview.paused && webcamPreview.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+    webcamPreview.videoWidth && webcamPreview.videoHeight && !hasVideoTestPattern(webcamPreview));
+}
+
+function watchVideoSignal(stream) {
+  clearInterval(videoSignalTimer);
+  let lastFrames = -1;
+  let lastFrameAt = performance.now();
+  function check() {
+    if (webcamStream !== stream || webcamPreview.srcObject !== stream || webcamPreview.hidden) return;
+    const frames = webcamPreview.getVideoPlaybackQuality().totalVideoFrames;
+    const now = performance.now();
+    if (frames !== lastFrames) {
+      lastFrames = frames;
+      lastFrameAt = now;
+    }
+    const ready = frames > 0 && now - lastFrameAt < 1500 && videoFrameIsUsable();
+    if (ready === videoSignalReady) return;
+    videoSignalReady = ready;
+    syncStagePreview();
+    updateCaptureButton();
+  }
+  check();
+  videoSignalTimer = setInterval(check, 250);
 }
 
 async function refreshUsbPreview() {
@@ -506,7 +543,7 @@ async function refreshUsbPreview() {
     if (usbPreviewFailures >= 3) {
       usbPreviewRetryAt = Date.now() + 5000;
       usbPreviewFailures = 0;
-      usbPreviewReady = false;
+      if (!capturing) usbPreviewReady = false;
       syncStagePreview();
       status.textContent = `Không mở được live preview USB: ${error.message}. Vẫn có thể chụp ảnh gốc.`;
     }
@@ -532,6 +569,7 @@ async function openVideoSource(deviceId, automatic = false) {
     webcamPreview.srcObject = stream;
     await webcamPreview.play();
     webcamStream = stream;
+    videoSignalReady = false;
     activeVideoDeviceId = stream.getVideoTracks()[0]?.getSettings().deviceId || deviceId || '';
     const devices = videoDevicesOnly(await navigator.mediaDevices.enumerateDevices().catch(() => []));
     previousStream?.getTracks().forEach((track) => track.stop());
@@ -548,7 +586,7 @@ async function openVideoSource(deviceId, automatic = false) {
     }, { once: true });
     captureSource = 'webcam';
     syncStagePreview();
-    photoFrame.hidden = true;
+    watchVideoSignal(stream);
     webcamButton.textContent = 'Tắt nguồn hình';
     stageBottomNote.lastChild.textContent = ` ${label} · Live view${cameraConnected ? ' · Ảnh gốc từ máy ảnh USB' : ''}`;
     setCameraBadge(true, captureCardName.test(label) ? 'Capture card sẵn sàng' : 'Nguồn hình sẵn sàng');
@@ -770,7 +808,6 @@ function resetSession() {
   updateWatchButtons();
   videoSaved.textContent = 'Ảnh gốc đã được lưu trong máy.';
   photoGallery.replaceChildren();
-  photoFrame.hidden = true;
   stageFooterHint.textContent = 'Chọn bố cục → live preview → chụp';
   updatePreview();
   showScreen('template-start');
@@ -974,19 +1011,23 @@ cancelButton.addEventListener('click', () => {
 });
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-async function countdown(seconds, heading, caption) {
-  for (let remaining = seconds; remaining > 0; remaining--) {
-    if (cancelRequested) throw new Error('Đã dừng buổi chụp.');
-    shootOverlay.hidden = false;
-    shootOverline.textContent = heading;
-    shootNumber.textContent = String(remaining);
-    shootCaption.textContent = caption;
-    status.textContent = `${heading}: ${remaining} giây`;
-    await wait(1000);
+async function countdown(seconds, heading) {
+  if (!seconds) return;
+  shootNumber.hidden = false;
+  try {
+    for (let remaining = seconds; remaining > 0; remaining--) {
+      if (cancelRequested) throw new Error('Đã dừng buổi chụp.');
+      shootNumber.textContent = String(remaining);
+      status.textContent = `${heading}: ${remaining} giây`;
+      await wait(1000);
+    }
+  } finally {
+    shootNumber.hidden = true;
   }
 }
 
 async function captureWebcamPhoto() {
+  if (!videoSignalReady || !videoFrameIsUsable()) throw new Error('Nguồn video chưa có tín hiệu để chụp.');
   const width = Math.min(webcamPreview.videoWidth, 3840);
   if (!width || !webcamPreview.videoHeight) throw new Error('Webcam chưa có hình ảnh. Hãy thử mở lại webcam.');
   const canvas = document.createElement('canvas');
@@ -1004,7 +1045,7 @@ async function captureWebcamPhoto() {
 async function startSessionVideo() {
   const mimeType = ['video/mp4;codecs=avc1.42001f', 'video/mp4;codecs=avc1', 'video/webm;codecs=vp8', 'video/webm']
     .find((type) => MediaRecorder.isTypeSupported(type));
-  if (!mimeType) throw new Error('Electron không hỗ trợ ghi video WebM trên máy này.');
+  if (!mimeType) throw new Error('Electron không hỗ trợ ghi video trên máy này.');
   const width = Math.min(webcamPreview.videoWidth, 960);
   if (!width || !webcamPreview.videoHeight) throw new Error('Webcam chưa có hình để quay video.');
   const height = Math.round(width * webcamPreview.videoHeight / webcamPreview.videoWidth);
@@ -1013,10 +1054,12 @@ async function startSessionVideo() {
   canvas.height = height;
   const context = canvas.getContext('2d');
   const draw = () => {
+    if (!videoSignalReady || !videoFrameIsUsable()) return false;
     context.setTransform(mirrorVideo ? -1 : 1, 0, 0, 1, mirrorVideo ? width : 0, 0);
     context.drawImage(webcamPreview, 0, 0, width, height);
+    return true;
   };
-  draw();
+  if (!draw()) throw new Error('Nguồn video chưa có tín hiệu để quay.');
   const stream = canvas.captureStream(0);
   const videoTrack = stream.getVideoTracks()[0];
   let drawTimer = null;
@@ -1031,6 +1074,7 @@ async function startSessionVideo() {
       resolveFinished = resolve;
       rejectFinished = reject;
     });
+    finished.catch(() => {});
     recorder.addEventListener('dataavailable', (event) => {
       if (!event.data.size) return;
       queue = queue.then(async () => {
@@ -1057,8 +1101,7 @@ async function startSessionVideo() {
     recorder.start(1000);
     videoTrack.requestFrame();
     drawTimer = setInterval(() => {
-      draw();
-      videoTrack.requestFrame();
+      if (draw()) videoTrack.requestFrame();
     }, 1000 / VIDEO_FPS);
     const startedAt = Date.now();
     recordingTime.textContent = '00:00';
@@ -1082,8 +1125,21 @@ async function startSessionVideo() {
   }
 }
 
+async function waitForCaptureSignal() {
+  if (!captureUsesVideo) return;
+  const deadline = performance.now() + 7000;
+  while (performance.now() < deadline) {
+    if (cancelRequested) throw new Error('Đã dừng buổi chụp.');
+    if (!webcamStream) throw new Error('Nguồn video đã ngắt kết nối.');
+    if (videoSignalReady && videoFrameIsUsable()) return;
+    await wait(150);
+  }
+  throw new Error('Nguồn video vẫn chưa có tín hiệu.');
+}
+
 captureButton.addEventListener('click', async () => {
-  if (!templateChosen || capturing || detecting || (!cameraConnected && !webcamStream)) return;
+  if (!templateChosen || capturing || detecting || (!cameraConnected && !webcamStream) ||
+      (webcamStream && (!videoSignalReady || !videoFrameIsUsable()))) return;
   if (!cameraConnected && captureCardName.test(activeVideoLabel)) {
     status.textContent = 'Chưa nhận máy ảnh qua USB. Capture card chỉ cung cấp live view, không thể chụp ảnh gốc hoặc kích flash.';
     return;
@@ -1094,6 +1150,7 @@ captureButton.addEventListener('click', async () => {
   let source = cameraConnected ? 'gphoto' : 'webcam';
   let videoController = null;
   capturing = true;
+  captureUsesVideo = Boolean(webcamStream);
   cancelRequested = false;
   newspaperPositions.clear();
   capturedPhotos = [];
@@ -1101,7 +1158,8 @@ captureButton.addEventListener('click', async () => {
   lastVideoUrl = null;
   updateWatchButtons();
   showScreen('setup');
-  photoFrame.hidden = true;
+  shootProgress.textContent = `1/${count}`;
+  shootOverlay.hidden = false;
   stageFooterHint.textContent = 'Chụp → chọn ảnh → xem thành phẩm';
   cancelButton.hidden = false;
   cancelButton.disabled = false;
@@ -1114,15 +1172,11 @@ captureButton.addEventListener('click', async () => {
       try { videoController = await startSessionVideo(); }
       catch (error) { videoSaved.textContent = `Không quay được video: ${error.message}`; }
     }
-    await countdown(initialDelay, 'BẮT ĐẦU SAU', 'giây trước khi chụp');
     for (let index = 0; index < count; index++) {
-      photoFrame.hidden = true;
-      if (index > 0) await countdown(interval - (source === 'gphoto' ? 1 : 0), 'ẢNH TIẾP THEO', 'giây để đổi dáng');
+      shootProgress.textContent = `${index + 1}/${count}`;
+      await countdown(index ? interval : initialDelay, index ? 'ẢNH TIẾP THEO' : 'BẮT ĐẦU SAU');
       if (cancelRequested) throw new Error('Đã dừng buổi chụp.');
-      shootOverlay.hidden = source === 'webcam';
-      shootOverline.textContent = 'ĐANG CHỤP';
-      shootNumber.textContent = `${index + 1}/${count}`;
-      shootCaption.textContent = 'Giữ nguyên tư thế';
+      await waitForCaptureSignal();
       status.textContent = `Đang chụp ảnh ${index + 1}/${count}…`;
       let result;
       if (source === 'gphoto') {
@@ -1134,27 +1188,14 @@ captureButton.addEventListener('click', async () => {
             throw new Error(`Máy ảnh USB chụp không thành công: ${error.message}. Kiểm tra kết nối USB và chế độ điều khiển từ máy tính.`);
           }
           source = 'webcam';
-          shootOverlay.hidden = true;
           status.textContent = `Máy ảnh USB không chụp được; tiếp tục lấy ảnh từ ${activeVideoLabel}.`;
           result = await captureWebcamPhoto();
         } finally {
           usbPreviewPaused = false;
-          usbPreviewRetryAt = Date.now() + 1500;
+          usbPreviewRetryAt = Math.max(usbPreviewRetryAt, Date.now() + 350);
         }
       } else result = await captureWebcamPhoto();
       capturedPhotos.push(result);
-      if (source === 'gphoto') {
-        const image = document.createElement('img');
-        image.src = result.dataUrl;
-        image.alt = `Ảnh vừa chụp số ${index + 1}`;
-        photoFrame.replaceChildren(image);
-        photoFrame.hidden = false;
-        shootOverlay.hidden = true;
-        if (index < count - 1) {
-          await wait(1000);
-          photoFrame.hidden = true;
-        }
-      }
       savedPath.textContent = `Ảnh gốc lưu tại: ${result.filePath}`;
     }
     status.textContent = `Đã chụp ${capturedPhotos.length} ảnh. Hãy chọn ${layouts[selected('template')].count} ảnh yêu thích.`;
@@ -1173,14 +1214,14 @@ captureButton.addEventListener('click', async () => {
       }
     }
     capturing = false;
+    captureUsesVideo = false;
     document.body.classList.remove('shooting');
     shootOverlay.hidden = true;
     cancelButton.hidden = true;
     if (capturedPhotos.length > 0) {
-      photoFrame.hidden = true;
       updateSelection();
       showScreen('selection');
-    }
+    } else syncStagePreview();
     updateCaptureButton();
     checkCamera();
   }
