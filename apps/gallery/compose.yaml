@@ -1,0 +1,19 @@
+services:
+  photobooth-api:
+    build:
+      context: .
+    env_file:
+      - .env.local
+    environment:
+      GALLERY_ROLE: api
+      GALLERY_MEDIA_DIR: /data/media
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3180:3000"
+    volumes:
+      - type: bind
+        source: /var/lib/photobooth/media
+        target: /data/media
+        bind:
+          create_host_path: false

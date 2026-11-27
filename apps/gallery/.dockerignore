@@ -1,0 +1,10 @@
+.git
+.env*
+.gallery-data
+.next
+node_modules
+*.tsbuildinfo
+next-env.d.ts
+compose.yaml
+README.md
+npm-debug.log*
