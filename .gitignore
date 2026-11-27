@@ -1,4 +1,10 @@
 node_modules/
+.next/
+.gallery-data/
+.env.booth
+.env.local
+*.tsbuildinfo
+next-env.d.ts
 .venv-ai/
 __pycache__/
 *.pyc
