@@ -57,6 +57,7 @@ const retakeButton = document.getElementById('retake-from-gallery');
 const editSelectionButton = document.getElementById('edit-selection');
 const finalConfirmButton = document.getElementById('final-confirm');
 const qrScreen = document.getElementById('qr-screen');
+const sessionQr = document.getElementById('session-qr');
 const qrTimer = document.getElementById('qr-timer');
 const nextGuestButton = document.getElementById('next-guest');
 const printHeading = document.querySelector('.print-heading');
@@ -86,6 +87,9 @@ let activeTemplateId = null;
 let activeFilter = 'all';
 let qrTimerHandle = null;
 let lastVideoUrl = null;
+let activeSessionToken = null;
+let qrStatusTimer;
+let displayedSessionToken;
 let lastWatchButton = null;
 
 function updateWatchButtons() {
@@ -738,6 +742,7 @@ confirmButton.addEventListener('click', () => {
 });
 
 function resetSession() {
+  activeSessionToken = null;
   newspaperPositions.clear();
   templateChosen = false;
   stopWebcam();
@@ -791,8 +796,38 @@ editSelectionButton.addEventListener('click', () => {
 function closeQrScreen() {
   if (qrTimerHandle) clearInterval(qrTimerHandle);
   qrTimerHandle = null;
+  clearInterval(qrStatusTimer);
+  qrStatusTimer = null;
+  displayedSessionToken = null;
+  sessionQr.hidden = true;
+  sessionQr.removeAttribute('src');
   qrScreen.hidden = true;
   templateGrid.querySelector('.template-choice')?.focus();
+}
+
+function showSessionQr(token, result) {
+  displayedSessionToken = token;
+  function update(result) {
+    exportStatus.textContent = ({
+      queued: 'Ảnh đã lưu trên máy. Quét QR để chờ album đồng bộ.',
+      ready: 'Album đã sẵn sàng. Quét QR để xem và tải ảnh.',
+      expired: 'Link album đã hết hạn. Các file vẫn được lưu trên máy.',
+      local: 'Ảnh đã lưu trên máy. Gallery online chưa được cấu hình.'
+    })[result.state] || 'Đang chuẩn bị album.';
+    if (result.state === 'expired') sessionQr.hidden = true;
+    if (result.state !== 'queued') clearInterval(qrStatusTimer);
+  }
+  if (result.qr) {
+    sessionQr.src = result.qr;
+    sessionQr.hidden = false;
+  }
+  update(result);
+  if (result.state === 'queued') {
+    qrStatusTimer = setInterval(async () => {
+      const next = await window.photobooth.gallerySessionStatus(token).catch(() => null);
+      if (next && displayedSessionToken === token) update(next);
+    }, 1800);
+  }
 }
 
 nextGuestButton.addEventListener('click', closeQrScreen);
@@ -846,12 +881,16 @@ function openPhotoPicker() {
         return;
       }
       templateExportStatus.textContent = '';
+      activeSessionToken = await window.photobooth.startGallerySession();
+      for (const photo of photos) await window.photobooth.recordGalleryAsset(activeSessionToken, 'original', photo.filePath);
       newspaperPositions.clear();
       capturedPhotos = photos;
       chosenIndices = [];
       if (failures.length) videoSaved.textContent = `Không nạp được: ${failures.join(', ')}.`;
       updateSelection();
       showScreen('selection');
+    } catch (error) {
+      templateExportStatus.textContent = `Không mở được phiên ảnh: ${error.message}`;
     } finally {
       layoutSection.inert = templateGrid.inert = templateFilters.inert = false;
       importButton.disabled = false;
@@ -875,17 +914,16 @@ finalConfirmButton.addEventListener('click', async () => {
   }
   if (!templateUnlocked || !activeTemplateId) return;
   finalConfirmButton.disabled = true;
+  editSelectionButton.disabled = true;
   templateExportStatus.textContent = 'Đang xuất ảnh đã chọn ở độ phân giải gốc…';
+  let galleryResult;
+  const token = activeSessionToken;
   try {
-    const files = [];
+    const selectedPhotos = [];
     for (const index of chosenIndices) {
       const dataUrl = await window.photobooth.fullPhoto(capturedPhotos[index].filePath);
-      const image = await new Promise((resolve, reject) => {
-        const source = new Image();
-        source.onload = () => resolve(source);
-        source.onerror = () => reject(new Error('Không đọc được ảnh gốc.'));
-        source.src = dataUrl;
-      });
+      const image = await window.loadNewspaperPhoto(dataUrl);
+      selectedPhotos.push(image);
       const canvas = document.createElement('canvas');
       canvas.width = image.naturalWidth;
       canvas.height = image.naturalHeight;
@@ -894,23 +932,30 @@ finalConfirmButton.addEventListener('click', async () => {
         context.filter = 'grayscale(1) contrast(1.04)';
       }
       context.drawImage(image, 0, 0);
-      files.push(await window.photobooth.saveExport(canvas.toDataURL('image/jpeg', .94)));
+      await window.photobooth.saveExport(canvas.toDataURL('image/jpeg', .94));
     }
-    let pageFile = null;
     const design = templates.find((item) => item.id === activeTemplateId);
-    if (design?.newspaper) {
-      const original = await window.photobooth.fullPhoto(capturedPhotos[chosenIndices[0]].filePath);
-      const position = newspaperPositions.get(newspaperPositionKey(design));
-      pageFile = await window.photobooth.saveExport(await window.renderCuChiNewspaper(original, photoMode, design, position));
+    await window.newspaperAssetsReady;
+    let dataUrl;
+    if (design.newspaper) {
+      const composite = document.createElement('canvas');
+      window.drawCuChiNewspaper(composite, design, selectedPhotos[0], photoMode, 4.5, newspaperPositions.get(newspaperPositionKey(design)));
+      dataUrl = composite.toDataURL('image/jpeg', .96);
+    } else {
+      dataUrl = await window.renderFrameExport(printMockup, selected('template'), selectedPhotos, photoMode);
     }
-    exportStatus.textContent = `Đã lưu ${files.length} ảnh gốc đã chọn${pageFile ? ` và tờ báo tại ${pageFile}` : ''}. QR hiện là minh họa.`;
+    const file = await window.photobooth.saveExport(dataUrl);
+    galleryResult = await window.photobooth.publishGallerySession(token, file);
   } catch (error) {
     templateExportStatus.textContent = `Không xuất được ảnh: ${error.message}`;
     finalConfirmButton.disabled = false;
+    editSelectionButton.disabled = false;
     return;
   }
   resetSession();
+  editSelectionButton.disabled = false;
   qrScreen.hidden = false;
+  showSessionQr(token, galleryResult);
   nextGuestButton.focus();
   let remaining = 20;
   qrTimer.textContent = `Tự trở về màn đầu sau ${remaining} giây`;
@@ -953,11 +998,11 @@ async function captureWebcamPhoto() {
     context.scale(-1, 1);
   }
   context.drawImage(webcamPreview, 0, 0, canvas.width, canvas.height);
-  return window.photobooth.saveWebcamPhoto(canvas.toDataURL('image/jpeg', 0.95));
+  return window.photobooth.saveWebcamPhoto(canvas.toDataURL('image/jpeg', 0.95), activeSessionToken);
 }
 
 async function startSessionVideo() {
-  const mimeType = ['video/webm;codecs=vp8', 'video/webm;codecs=vp9', 'video/webm']
+  const mimeType = ['video/mp4;codecs=avc1.42001f', 'video/mp4;codecs=avc1', 'video/webm;codecs=vp8', 'video/webm']
     .find((type) => MediaRecorder.isTypeSupported(type));
   if (!mimeType) throw new Error('Electron không hỗ trợ ghi video WebM trên máy này.');
   const width = Math.min(webcamPreview.videoWidth, 960);
@@ -977,7 +1022,7 @@ async function startSessionVideo() {
   let drawTimer = null;
   let id;
   try {
-    ({ id } = await window.photobooth.beginVideo());
+    ({ id } = await window.photobooth.beginVideo(mimeType));
     const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2_500_000 });
     let queue = Promise.resolve();
     let resolveFinished;
@@ -1064,6 +1109,7 @@ captureButton.addEventListener('click', async () => {
   updateCaptureButton();
   updatePreview();
   try {
+    activeSessionToken = await window.photobooth.startGallerySession();
     if (webcamStream) {
       try { videoController = await startSessionVideo(); }
       catch (error) { videoSaved.textContent = `Không quay được video: ${error.message}`; }
@@ -1082,7 +1128,7 @@ captureButton.addEventListener('click', async () => {
       if (source === 'gphoto') {
         try {
           usbPreviewPaused = true;
-          result = await window.photobooth.capturePhoto();
+          result = await window.photobooth.capturePhoto(activeSessionToken);
         } catch (error) {
           if (!webcamStream || captureCardName.test(activeVideoLabel)) {
             throw new Error(`Máy ảnh USB chụp không thành công: ${error.message}. Kiểm tra kết nối USB và chế độ điều khiển từ máy tính.`);
@@ -1119,6 +1165,7 @@ captureButton.addEventListener('click', async () => {
       try {
         const video = await videoController.stop();
         lastVideoUrl = video.fileUrl;
+        await window.photobooth.recordGalleryAsset(activeSessionToken, 'video', video.filePath);
         updateWatchButtons();
         videoSaved.textContent = `Video buổi chụp đã lưu: ${video.filePath}`;
       } catch (error) {

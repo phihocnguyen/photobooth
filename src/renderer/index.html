@@ -113,11 +113,8 @@
       <div class="qr-card">
         <span class="section-kicker">BUỔI CHỤP HOÀN TẤT</span>
         <h2 id="qr-title">Cảm ơn bạn đã ghé photobooth ✦</h2>
-        <p id="export-status">Ảnh đã chọn được lưu trong máy. QR hiện là minh họa.</p>
-        <div class="qr-art" aria-label="Hình QR minh họa, chưa thể quét">
-          <span class="qr-finder finder-one"></span><span class="qr-finder finder-two"></span><span class="qr-finder finder-three"></span>
-          <span class="qr-demo">QR DEMO</span>
-        </div>
+        <p id="export-status" role="status">Ảnh đã được lưu trong máy.</p>
+        <img id="session-qr" class="session-qr" alt="Quét mã QR để mở album" hidden />
         <button id="next-guest" class="button button-primary" type="button">Bắt đầu cho khách tiếp theo →</button>
         <small id="qr-timer">Tự trở về màn đầu sau 20 giây</small>
       </div>
@@ -130,6 +127,7 @@
     </div>
     <script src="templates.js"></script>
     <script src="newspaper.js"></script>
+    <script src="frame-export.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

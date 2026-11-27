@@ -7,9 +7,12 @@
   "scripts": {
     "start": "electron --no-sandbox .",
     "test:photos": "electron --no-sandbox . --test-photos",
-    "check": "node --check src/main.js && node --check src/preload.js && node --check src/gphoto.js && node --check src/renderer/templates.js && node --check src/renderer/newspaper.js && node --check src/renderer/app.js"
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/gphoto.js && node --check src/gallery-sync.js && node --check src/renderer/templates.js && node --check src/renderer/newspaper.js && node --check src/renderer/frame-export.js && node --check src/renderer/app.js"
   },
   "devDependencies": {
     "electron": "^45.4.1"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
   }
 }
